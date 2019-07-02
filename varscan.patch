@@ -1,0 +1,486 @@
+diff --git a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/Copynumber.class b/./net/sf/varscan/Copynumber.class
+index 86c2f30..50d6de4 100644
+Binary files a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/Copynumber.class and b/./net/sf/varscan/Copynumber.class differ
+diff --git a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/Copynumber.java b/./net/sf/varscan/Copynumber.java
+index 935f118..6256147 100644
+--- a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/Copynumber.java
++++ b/./net/sf/varscan/Copynumber.java
+@@ -227,14 +227,35 @@ public class Copynumber {
+ 	    					int pileupDepthNormal = Integer.parseInt(lineContents[normalOffset]);
+ 		    	        	//String normalBases = lineContents[normalOffset + 1];
+ 		    	        	String normalQualities = lineContents[normalOffset + 2];
+-
++							
++							//test code from DWB:
++							if (pileupDepthNormal == 0 && (! lineContents[normalOffset + 2].equals("*")) && (! lineContents[normalOffset + 2].equals(""))){
++								System.err.println("Issue with normal depth:" + line);
++								return;
++							}else if (pileupDepthNormal == 0){
++								normalQualities = "*";
++							}
++							
++							//end code
++							
+ 	    					// Parse tumor, which should be second sample //
+ 	    					int tumorOffset = 6;
+ 	    					int pileupDepthTumor = Integer.parseInt(lineContents[tumorOffset]);
+ 		    	        	//String tumorBases = lineContents[tumorOffset + 1];
+-		    	        	String tumorQualities = lineContents[tumorOffset + 2];
+-
+-
++							
++							//Modification from DWB to deal with parsing error resulting from samtools 1.1 etc
++							//in this output file, a string like below is produced:
++							//1	69500	T	5	.,,.^:.	CabBB	0
++							//when samtools, say samtools-0.1.18 would add two * after the 0.
++							
++							String tumorQualities = "*";
++							
++							if ((tumorOffset + 2) == (lineContents.length-1)){
++								tumorQualities = lineContents[tumorOffset + 2];
++							}
++							
++							//end modification
++							
+ 		    	        	// If either sample met the minimum coverage and both had at least one read //
+ 
+ //		    	        	if((pileupDepthNormal >= minCoverage || pileupDepthTumor >= minCoverage) && normalQualities.length() > 0)// && tumorQualities.length() > 0)
+diff --git a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/FpFilter.class b/./net/sf/varscan/FpFilter.class
+index 1e858e9..7f5e2c1 100644
+Binary files a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/FpFilter.class and b/./net/sf/varscan/FpFilter.class differ
+diff --git a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/FpFilter.java b/./net/sf/varscan/FpFilter.java
+index ffce630..fc9fb42 100644
+--- a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/FpFilter.java
++++ b/./net/sf/varscan/FpFilter.java
+@@ -304,18 +304,7 @@ public class FpFilter {
+     				vcfHeaderInfo += "\n##FILTER=<ID=MMQSdiff,Description=\"Mismatch quality sum difference (ref - var) > " + maxMMQSdiff + "\">";
+     				vcfHeaderInfo += "\n##FILTER=<ID=MapQualDiff,Description=\"Mapping quality difference (ref - var) > " + maxMapQualDiff + "\">";
+     				vcfHeaderInfo += "\n##FILTER=<ID=ReadLenDiff,Description=\"Average supporting read length difference (ref - var) > " + maxReadLenDiff + "\">";
+-					
+-					//Added by DWB to adhere to the VCF standard that all FILTERS need to be specified
+-					
+-					vcfHeaderInfo += "\n##FILTER=<ID=RefReadPos,Description=\"Minimum average read position of ref-supporting reads below " + minRefReadPos + "\">";
+-					vcfHeaderInfo += "\n##FILTER=<ID=RefDist3,Description=\"Minimum average distance to effective 3' end (ref) " + minRefDist3 + "\">";
+-					vcfHeaderInfo += "\n##FILTER=<ID=RefMMQS,Description=\"Maximum mismatch quality sum of reference-supporting reads " + maxRefMMQS + "\">";
+-					vcfHeaderInfo += "\n##FILTER=<ID=RefAvgRL,Description=\"Minimum average trimmed read length for ref allele " + minRefAvgRL + "\">";
+-					vcfHeaderInfo += "\n##FILTER=<ID=VarAvgRL,Description=\"Minimum average trimmed read length for var allele " + minVarAvgRL + "\">";
+-					vcfHeaderInfo += "\n##FILTER=<ID=NoReadCounts,Description=\"No read counts found \">";
+-					
+-					//end DWB mods
+-					
++
+ 
+     	    		// Parse the infile line by line //
+ 
+@@ -563,9 +552,7 @@ public class FpFilter {
+                 	    							refDist3 = Double.parseDouble(refContents[13]);
+ 
+                 	    							// ONLY APPLY THESE FILTERS IF WE HAVE 2+ REF-SUPPORTING READS //
+-													
+-													//DWB: VCF standard dicates that filters should be ';' delimited not comma delimited, fixed below for every failReason
+-													
++
+                 	    							if(refReads >= 2)
+                 	    							{
+                     	    							// Variant read position for ref-supporting reads //
+@@ -573,7 +560,7 @@ public class FpFilter {
+                     	    							if(refPos < minRefReadPos)
+                     	    							{
+                     	    								if(failReason.length() > 0)
+-                    	    									failReason += ";";
++                    	    									failReason += ",";
+                     	    								failReason += "RefReadPos";
+                     	    								stats.put("numFailRefReadPos", (stats.get("numFailRefReadPos") + 1));
+                     	    							}
+@@ -581,7 +568,7 @@ public class FpFilter {
+                     	    							if(refDist3 < minRefDist3)
+                     	    							{
+                     	    								if(failReason.length() > 0)
+-                    	    									failReason += ";";
++                    	    									failReason += ",";
+                     	    								failReason += "RefDist3";
+                     	    								stats.put("numFailRefDist3", (stats.get("numFailRefDist3") + 1));
+                     	    							}
+@@ -591,7 +578,7 @@ public class FpFilter {
+                     	    							if(refReads > 0 && refMapQual < minRefMapQual)
+                     	    							{
+                     	    								if(failReason.length() > 0)
+-                    	    									failReason += ";";
++                    	    									failReason += ",";
+                     	    								failReason += "RefMapQual";
+                     	    								stats.put("numFailRefMapQual", (stats.get("numFailRefMapQual") + 1));
+ 
+@@ -602,7 +589,7 @@ public class FpFilter {
+                     	    							if(refMMQS > maxRefMMQS)
+                     	    							{
+                     	    								if(failReason.length() > 0)
+-                    	    									failReason += ";";
++                    	    									failReason += ",";
+                     	    								failReason += "RefMMQS";
+                     	    								stats.put("numFailRefMMQS", (stats.get("numFailRefMMQS") + 1));
+                     	    							}
+@@ -612,7 +599,7 @@ public class FpFilter {
+                     	    							if(!isIndel && refReads > 0 && refRL < minRefAvgRL)
+                     	    							{
+                     	    								if(failReason.length() > 0)
+-                    	    									failReason += ";";
++                    	    									failReason += ",";
+                     	    								failReason += "RefAvgRL";
+                     	    								stats.put("numFailRefAvgRL", (stats.get("numFailRefAvgRL") + 1));
+                     	    							}
+@@ -634,7 +621,7 @@ public class FpFilter {
+             	    								else
+             	    								{
+                 	    								if(failReason.length() > 0)
+-                	    									failReason += ";";
++                	    									failReason += ",";
+                 	    								failReason += "VarCount";
+                 	    								stats.put("numFailVarCount", (stats.get("numFailVarCount") + 1));
+             	    								}
+@@ -647,7 +634,7 @@ public class FpFilter {
+             	    							if(varFreq < minVarFreq)
+             	    							{
+             	    								if(failReason.length() > 0)
+-            	    									failReason += ";";
++            	    									failReason += ",";
+             	    								failReason += "VarFreq";
+             	    								stats.put("numFailVarFreq", (stats.get("numFailVarFreq") + 1));
+             	    							}
+@@ -656,7 +643,7 @@ public class FpFilter {
+             	    							if(varPos < minVarReadPos)
+             	    							{
+             	    								if(failReason.length() > 0)
+-            	    									failReason += ";";
++            	    									failReason += ",";
+             	    								failReason += "VarReadPos";
+             	    								stats.put("numFailVarReadPos", (stats.get("numFailVarReadPos") + 1));
+             	    							}
+@@ -664,7 +651,7 @@ public class FpFilter {
+             	    							if(varDist3 < minVarDist3)
+             	    							{
+             	    								if(failReason.length() > 0)
+-            	    									failReason += ";";
++            	    									failReason += ",";
+             	    								failReason += "VarDist3";
+             	    								stats.put("numFailVarDist3", (stats.get("numFailVarDist3") + 1));
+             	    							}
+@@ -675,7 +662,7 @@ public class FpFilter {
+             	    							if(varMMQS > maxVarMMQS)
+             	    							{
+             	    								if(failReason.length() > 0)
+-            	    									failReason += ";";
++            	    									failReason += ",";
+             	    								failReason += "VarMMQS";
+             	    								stats.put("numFailVarMMQS", (stats.get("numFailVarMMQS") + 1));
+             	    							}
+@@ -686,7 +673,7 @@ public class FpFilter {
+             	    							if(varReads > 0 && varMapQual < minVarMapQual)
+             	    							{
+             	    								if(failReason.length() > 0)
+-            	    									failReason += ";";
++            	    									failReason += ",";
+             	    								failReason += "VarMapQual";
+             	    								stats.put("numFailVarMapQual", (stats.get("numFailVarMapQual") + 1));
+             	    							}
+@@ -696,7 +683,7 @@ public class FpFilter {
+             	    							if(refReads > 0 && refBaseQual < minRefBaseQual)
+             	    							{
+             	    								if(failReason.length() > 0)
+-            	    									failReason += ";";
++            	    									failReason += ",";
+             	    								failReason += "RefBaseQual";
+             	    								stats.put("numFailRefBaseQual", (stats.get("numFailRefBaseQual") + 1));
+ 
+@@ -705,7 +692,7 @@ public class FpFilter {
+             	    							if(!isIndel && varReads > 0 && varBaseQual < minVarBaseQual)
+             	    							{
+             	    								if(failReason.length() > 0)
+-            	    									failReason += ";";
++            	    									failReason += ",";
+             	    								failReason += "VarBaseQual";
+             	    								stats.put("numFailVarBaseQual", (stats.get("numFailVarBaseQual") + 1));
+             	    							}
+@@ -713,7 +700,7 @@ public class FpFilter {
+             	    							if(!isIndel && varReads > 0 && varRL < minVarAvgRL)
+             	    							{
+             	    								if(failReason.length() > 0)
+-            	    									failReason += ";";
++            	    									failReason += ",";
+             	    								failReason += "VarAvgRL";
+             	    								stats.put("numFailVarAvgRL", (stats.get("numFailVarAvgRL") + 1));
+             	    							}
+@@ -732,7 +719,7 @@ public class FpFilter {
+         	    									if(varStrandedness < minStrandedness || (1 - varStrandedness) < minStrandedness)
+         	    									{
+                 	    								if(failReason.length() > 0)
+-                	    									failReason += ";";
++                	    									failReason += ",";
+                 	    								failReason += "Strand";
+                 	    								stats.put("numFailStrand", (stats.get("numFailStrand") + 1));
+ //                    	    								System.err.println(positionKey + "\t" + refReadsPlus + "\t" + refReadsMinus + "\t" + refStrandedness + "\t" + varReadsPlus + "\t" + varReadsMinus + "\t" + varStrandedness);
+@@ -752,7 +739,7 @@ public class FpFilter {
+                 	    							if(mmqsDiff > maxMMQSdiff)
+                 	    							{
+                 	    								if(failReason.length() > 0)
+-                	    									failReason += ";";
++                	    									failReason += ",";
+                 	    								failReason += "MMQSdiff";
+                 	    								stats.put("numFailMMQSdiff", (stats.get("numFailMMQSdiff") + 1));
+                 	    							}
+@@ -766,7 +753,7 @@ public class FpFilter {
+                 	    							if(mapQualDiff > maxMapQualDiff)
+                 	    							{
+                 	    								if(failReason.length() > 0)
+-                	    									failReason += ";";
++                	    									failReason += ",";
+                 	    								failReason += "MapQualDiff";
+                 	    								stats.put("numFailMapQualDiff", (stats.get("numFailMapQualDiff") + 1));
+                 	    							}
+@@ -776,14 +763,14 @@ public class FpFilter {
+                 	    							if(avgReadLenDiff > maxReadLenDiff)
+                 	    							{
+                 	    								if(failReason.length() > 0)
+-                	    									failReason += ";";
++                	    									failReason += ",";
+                 	    								failReason += "ReadLenDiff";
+                 	    								stats.put("numFailReadLenDiff", (stats.get("numFailReadLenDiff") + 1));
+                 	    							}
+ 
+             	    							}
+ 
+-												//end DWB mods
++
+             	    							// Check to see if it failed any filters. If so, mark it for failure //
+ 
+             	    							if(failReason.length() > 0)
+diff --git a/./test.p b/./test.p
+new file mode 100644
+index 0000000..7d01158
+--- /dev/null
++++ b/./test.p
+@@ -0,0 +1,224 @@
++diff --git a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/Copynumber.class b/./net/sf/varscan/Copynumber.class
++index 86c2f30..50d6de4 100644
++Binary files a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/Copynumber.class and b/./net/sf/varscan/Copynumber.class differ
++diff --git a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/Copynumber.java b/./net/sf/varscan/Copynumber.java
++index 935f118..6256147 100644
++--- a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/Copynumber.java
+++++ b/./net/sf/varscan/Copynumber.java
++@@ -227,14 +227,35 @@ public class Copynumber {
++ 	    					int pileupDepthNormal = Integer.parseInt(lineContents[normalOffset]);
++ 		    	        	//String normalBases = lineContents[normalOffset + 1];
++ 		    	        	String normalQualities = lineContents[normalOffset + 2];
++-
+++							
+++							//test code from DWB:
+++							if (pileupDepthNormal == 0 && (! lineContents[normalOffset + 2].equals("*")) && (! lineContents[normalOffset + 2].equals(""))){
+++								System.err.println("Issue with normal depth:" + line);
+++								return;
+++							}else if (pileupDepthNormal == 0){
+++								normalQualities = "*";
+++							}
+++							
+++							//end code
+++							
++ 	    					// Parse tumor, which should be second sample //
++ 	    					int tumorOffset = 6;
++ 	    					int pileupDepthTumor = Integer.parseInt(lineContents[tumorOffset]);
++ 		    	        	//String tumorBases = lineContents[tumorOffset + 1];
++-		    	        	String tumorQualities = lineContents[tumorOffset + 2];
++-
++-
+++							
+++							//Modification from DWB to deal with parsing error resulting from samtools 1.1 etc
+++							//in this output file, a string like below is produced:
+++							//1	69500	T	5	.,,.^:.	CabBB	0
+++							//when samtools, say samtools-0.1.18 would add two * after the 0.
+++							
+++							String tumorQualities = "*";
+++							
+++							if ((tumorOffset + 2) == (lineContents.length-1)){
+++								tumorQualities = lineContents[tumorOffset + 2];
+++							}
+++							
+++							//end modification
+++							
++ 		    	        	// If either sample met the minimum coverage and both had at least one read //
++ 
++ //		    	        	if((pileupDepthNormal >= minCoverage || pileupDepthTumor >= minCoverage) && normalQualities.length() > 0)// && tumorQualities.length() > 0)
++diff --git a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/FpFilter.class b/./net/sf/varscan/FpFilter.class
++index 1e858e9..7f5e2c1 100644
++Binary files a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/FpFilter.class and b/./net/sf/varscan/FpFilter.class differ
++diff --git a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/FpFilter.java b/./net/sf/varscan/FpFilter.java
++index ffce630..fc9fb42 100644
++--- a/../sequencing_workflows/VarScan.v2.4.1/net/sf/varscan/FpFilter.java
+++++ b/./net/sf/varscan/FpFilter.java
++@@ -304,18 +304,7 @@ public class FpFilter {
++     				vcfHeaderInfo += "\n##FILTER=<ID=MMQSdiff,Description=\"Mismatch quality sum difference (ref - var) > " + maxMMQSdiff + "\">";
++     				vcfHeaderInfo += "\n##FILTER=<ID=MapQualDiff,Description=\"Mapping quality difference (ref - var) > " + maxMapQualDiff + "\">";
++     				vcfHeaderInfo += "\n##FILTER=<ID=ReadLenDiff,Description=\"Average supporting read length difference (ref - var) > " + maxReadLenDiff + "\">";
++-					
++-					//Added by DWB to adhere to the VCF standard that all FILTERS need to be specified
++-					
++-					vcfHeaderInfo += "\n##FILTER=<ID=RefReadPos,Description=\"Minimum average read position of ref-supporting reads below " + minRefReadPos + "\">";
++-					vcfHeaderInfo += "\n##FILTER=<ID=RefDist3,Description=\"Minimum average distance to effective 3' end (ref) " + minRefDist3 + "\">";
++-					vcfHeaderInfo += "\n##FILTER=<ID=RefMMQS,Description=\"Maximum mismatch quality sum of reference-supporting reads " + maxRefMMQS + "\">";
++-					vcfHeaderInfo += "\n##FILTER=<ID=RefAvgRL,Description=\"Minimum average trimmed read length for ref allele " + minRefAvgRL + "\">";
++-					vcfHeaderInfo += "\n##FILTER=<ID=VarAvgRL,Description=\"Minimum average trimmed read length for var allele " + minVarAvgRL + "\">";
++-					vcfHeaderInfo += "\n##FILTER=<ID=NoReadCounts,Description=\"No read counts found \">";
++-					
++-					//end DWB mods
++-					
+++
++ 
++     	    		// Parse the infile line by line //
++ 
++@@ -563,9 +552,7 @@ public class FpFilter {
++                 	    							refDist3 = Double.parseDouble(refContents[13]);
++ 
++                 	    							// ONLY APPLY THESE FILTERS IF WE HAVE 2+ REF-SUPPORTING READS //
++-													
++-													//DWB: VCF standard dicates that filters should be ';' delimited not comma delimited, fixed below for every failReason
++-													
+++
++                 	    							if(refReads >= 2)
++                 	    							{
++                     	    							// Variant read position for ref-supporting reads //
++@@ -573,7 +560,7 @@ public class FpFilter {
++                     	    							if(refPos < minRefReadPos)
++                     	    							{
++                     	    								if(failReason.length() > 0)
++-                    	    									failReason += ";";
+++                    	    									failReason += ",";
++                     	    								failReason += "RefReadPos";
++                     	    								stats.put("numFailRefReadPos", (stats.get("numFailRefReadPos") + 1));
++                     	    							}
++@@ -581,7 +568,7 @@ public class FpFilter {
++                     	    							if(refDist3 < minRefDist3)
++                     	    							{
++                     	    								if(failReason.length() > 0)
++-                    	    									failReason += ";";
+++                    	    									failReason += ",";
++                     	    								failReason += "RefDist3";
++                     	    								stats.put("numFailRefDist3", (stats.get("numFailRefDist3") + 1));
++                     	    							}
++@@ -591,7 +578,7 @@ public class FpFilter {
++                     	    							if(refReads > 0 && refMapQual < minRefMapQual)
++                     	    							{
++                     	    								if(failReason.length() > 0)
++-                    	    									failReason += ";";
+++                    	    									failReason += ",";
++                     	    								failReason += "RefMapQual";
++                     	    								stats.put("numFailRefMapQual", (stats.get("numFailRefMapQual") + 1));
++ 
++@@ -602,7 +589,7 @@ public class FpFilter {
++                     	    							if(refMMQS > maxRefMMQS)
++                     	    							{
++                     	    								if(failReason.length() > 0)
++-                    	    									failReason += ";";
+++                    	    									failReason += ",";
++                     	    								failReason += "RefMMQS";
++                     	    								stats.put("numFailRefMMQS", (stats.get("numFailRefMMQS") + 1));
++                     	    							}
++@@ -612,7 +599,7 @@ public class FpFilter {
++                     	    							if(!isIndel && refReads > 0 && refRL < minRefAvgRL)
++                     	    							{
++                     	    								if(failReason.length() > 0)
++-                    	    									failReason += ";";
+++                    	    									failReason += ",";
++                     	    								failReason += "RefAvgRL";
++                     	    								stats.put("numFailRefAvgRL", (stats.get("numFailRefAvgRL") + 1));
++                     	    							}
++@@ -634,7 +621,7 @@ public class FpFilter {
++             	    								else
++             	    								{
++                 	    								if(failReason.length() > 0)
++-                	    									failReason += ";";
+++                	    									failReason += ",";
++                 	    								failReason += "VarCount";
++                 	    								stats.put("numFailVarCount", (stats.get("numFailVarCount") + 1));
++             	    								}
++@@ -647,7 +634,7 @@ public class FpFilter {
++             	    							if(varFreq < minVarFreq)
++             	    							{
++             	    								if(failReason.length() > 0)
++-            	    									failReason += ";";
+++            	    									failReason += ",";
++             	    								failReason += "VarFreq";
++             	    								stats.put("numFailVarFreq", (stats.get("numFailVarFreq") + 1));
++             	    							}
++@@ -656,7 +643,7 @@ public class FpFilter {
++             	    							if(varPos < minVarReadPos)
++             	    							{
++             	    								if(failReason.length() > 0)
++-            	    									failReason += ";";
+++            	    									failReason += ",";
++             	    								failReason += "VarReadPos";
++             	    								stats.put("numFailVarReadPos", (stats.get("numFailVarReadPos") + 1));
++             	    							}
++@@ -664,7 +651,7 @@ public class FpFilter {
++             	    							if(varDist3 < minVarDist3)
++             	    							{
++             	    								if(failReason.length() > 0)
++-            	    									failReason += ";";
+++            	    									failReason += ",";
++             	    								failReason += "VarDist3";
++             	    								stats.put("numFailVarDist3", (stats.get("numFailVarDist3") + 1));
++             	    							}
++@@ -675,7 +662,7 @@ public class FpFilter {
++             	    							if(varMMQS > maxVarMMQS)
++             	    							{
++             	    								if(failReason.length() > 0)
++-            	    									failReason += ";";
+++            	    									failReason += ",";
++             	    								failReason += "VarMMQS";
++             	    								stats.put("numFailVarMMQS", (stats.get("numFailVarMMQS") + 1));
++             	    							}
++@@ -686,7 +673,7 @@ public class FpFilter {
++             	    							if(varReads > 0 && varMapQual < minVarMapQual)
++             	    							{
++             	    								if(failReason.length() > 0)
++-            	    									failReason += ";";
+++            	    									failReason += ",";
++             	    								failReason += "VarMapQual";
++             	    								stats.put("numFailVarMapQual", (stats.get("numFailVarMapQual") + 1));
++             	    							}
++@@ -696,7 +683,7 @@ public class FpFilter {
++             	    							if(refReads > 0 && refBaseQual < minRefBaseQual)
++             	    							{
++             	    								if(failReason.length() > 0)
++-            	    									failReason += ";";
+++            	    									failReason += ",";
++             	    								failReason += "RefBaseQual";
++             	    								stats.put("numFailRefBaseQual", (stats.get("numFailRefBaseQual") + 1));
++ 
++@@ -705,7 +692,7 @@ public class FpFilter {
++             	    							if(!isIndel && varReads > 0 && varBaseQual < minVarBaseQual)
++             	    							{
++             	    								if(failReason.length() > 0)
++-            	    									failReason += ";";
+++            	    									failReason += ",";
++             	    								failReason += "VarBaseQual";
++             	    								stats.put("numFailVarBaseQual", (stats.get("numFailVarBaseQual") + 1));
++             	    							}
++@@ -713,7 +700,7 @@ public class FpFilter {
++             	    							if(!isIndel && varReads > 0 && varRL < minVarAvgRL)
++             	    							{
++             	    								if(failReason.length() > 0)
++-            	    									failReason += ";";
+++            	    									failReason += ",";
++             	    								failReason += "VarAvgRL";
++             	    								stats.put("numFailVarAvgRL", (stats.get("numFailVarAvgRL") + 1));
++             	    							}
++@@ -732,7 +719,7 @@ public class FpFilter {
++         	    									if(varStrandedness < minStrandedness || (1 - varStrandedness) < minStrandedness)
++         	    									{
++                 	    								if(failReason.length() > 0)
++-                	    									failReason += ";";
+++                	    									failReason += ",";
++                 	    								failReason += "Strand";
++                 	    								stats.put("numFailStrand", (stats.get("numFailStrand") + 1));
++ //                    	    								System.err.println(positionKey + "\t" + refReadsPlus + "\t" + refReadsMinus + "\t" + refStrandedness + "\t" + varReadsPlus + "\t" + varReadsMinus + "\t" + varStrandedness);
++@@ -752,7 +739,7 @@ public class FpFilter {
++                 	    							if(mmqsDiff > maxMMQSdiff)
++                 	    							{
++                 	    								if(failReason.length() > 0)
+\ No newline at end of file
