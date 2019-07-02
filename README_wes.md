@@ -33,6 +33,7 @@ Below is the expected setup for the programs and metadata files:
     * GenomeAnalysisTK.jar (v3.3-3-g3e87c07)
     * mutect-src/ (v1.1.7)
     * VarScan.v2.4.1p1.jar (After application of changes in varscan.patch)
+    * fpfilter_vcf.pl (After application of changes in fpfilter.patch to fpfilter.pl from <https://sourceforge.net/projects/varscan/files/scripts>)
     * other_varscan/v2_4_1/bam-readcount-bin/bin/bam-readcount (v0.7.4)
     * bcftools/ (v1.6)
     * vep/ (see below)

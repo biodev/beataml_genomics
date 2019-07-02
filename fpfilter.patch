@@ -1,0 +1,191 @@
+--- fpfilter.pl	2019-07-02 12:35:00.000000000 -0700
++++ fpfilter_vcf.pl	2019-06-26 08:52:53.000000000 -0700
+@@ -1,5 +1,7 @@
+ #!/gsc/bin/perl
+ 
++#Modified by DWB on 4-28-2015 to support reading/writing VCF files
++
+ use warnings;
+ use strict;
+ 
+@@ -97,7 +99,7 @@
+ sub execute
+ {
+     my %stats = ();
+-    $stats{'num_variants'} = $stats{'num_fail_pos'} = $stats{'num_fail_strand'} = $stats{'num_fail_varcount'} = $stats{'num_fail_varfreq'} = $stats{'num_fail_mmqs'} = $stats{'num_fail_var_mmqs'} = $stats{'num_fail_mapqual'} = $stats{'num_fail_readlen'} = $stats{'num_fail_dist3'} = $stats{'num_pass_filter'} = 0;
++     $stats{'not_passed_filter'} = $stats{'num_variants'} = $stats{'num_fail_pos'} = $stats{'num_no_readcounts'} = $stats{'num_pass_indel'} = $stats{'num_fail_strand'} = $stats{'num_fail_varcount'} = $stats{'num_fail_varfreq'} = $stats{'num_fail_mmqs'} = $stats{'num_fail_var_mmqs'} = $stats{'num_fail_mapqual'} = $stats{'num_fail_readlen'} = $stats{'num_fail_dist3'} = $stats{'num_pass_filter'} = 0;
+     
+     ## Load the read counts ##
+     
+@@ -119,9 +121,9 @@
+ 
+ 
+     ## Open the output files ##
+-    
+-    open(PASS, ">$output_basename.pass") or die "Can't open output file: $!\n";
+-    open(FAIL, ">$output_basename.fail") or die "Can't open output file: $!\n";
++    ##DWB: added the VCF suffix for consistency
++    open(PASS, ">$output_basename.filter.vcf") or die "Can't open output file: $!\n";
++    open(FAIL, ">$output_basename.fail.vcf") or die "Can't open output file: $!\n";
+ 
+     ## Parse the input file ##
+ 
+@@ -133,18 +135,93 @@
+     {
+ 	    chomp;
+ 	    my $line = $_;
++	    
++	    ##DWB: fix to address VCF file headers
++	    if ($line =~ "^#"){
++		print PASS "$line\n";
++		print FAIL "$line\n";
++		next
++	    }
++	    
+ 	    $lineCounter++;
+-            my ($chrom, $position, $ref, $var) = split(/\t/, $line);
++	    ##DWB: added $id, $filter etc to fix VCF-specific file positions
++            
++            my ($chrom, $position, $id, $ref, $var, $qual, $filter, $info, $geno_format, $n_geno, $t_geno) = split(/\t/, $line);
+             $ref = uc($ref);
+             $var = uc($var);
+-
++            
++            my @spv_els = grep /SPV=/, split(/;/, $info);
++            
++            if (scalar @spv_els != 1 ) {
++                print "ERROR: Expected a single SPV elements";
++                exit(1);
++            }
++            
++            my $spv = $spv_els[0];
++            
++            $spv =~ s/SPV=//;
++            
++            my @geno_formats = split(/:/, $geno_format);
++            
++            my $freq_pos = -1;
++            my $dp_pos = -1;
++            my $counter = 0;
++            
++            foreach (@geno_formats){
++                if ($_ eq "FREQ") {
++                    $freq_pos = $counter;
++                }elsif ($_ eq "DP"){
++                    $dp_pos = $counter;
++                }
++                
++                $counter++;
++            }
++            
++            if ($freq_pos == -1) {
++                print "ERROR: Cannot find FREQ entry for genotypes";
++                exit(1);
++            }
++            
++            if ($dp_pos == -1) {
++                print "ERROR: Cannot find DP entry for genotypes";
++                exit(1);
++            }
++            
++            my @t_genos = split(/:/, $t_geno);
++            my @n_genos = split(/:/, $n_geno);
++            
++            my $tumor_freq = $t_genos[$freq_pos];
++            my $normal_freq = $n_genos[$freq_pos];
++            
++            my $tumor_dp = $t_genos[$dp_pos];
++            my $normal_dp = $n_genos[$dp_pos];
++            
++            $tumor_freq =~ s/%//;
++            $normal_freq =~ s/%//;
++            
+             if(!($var =~ /[ACGT]/)) {
++                print ("$var issue");
+                 $var = iupac_to_base($ref, $var);
++                print("newvar: $var")
++            }
++            
++            my $valid_variant = 0;
++            
++            if ($spv <= .07 && $tumor_freq >= 10 && $normal_freq <= 5 && $tumor_dp >= 8 && $normal_dp >= 8) {
++                $valid_variant = 1;
++            }
++            
++            my $is_indel = 1;
++            
++            if ((length($ref) == length($var)) && (length($ref) == 1)) {
++                $is_indel = 0;
+             }
+             
++            ###DWB: End modifications
++            
+             $stats{'num_variants'}++;
+             
+-            if($readcounts_by_position{"$chrom\t$position"})
++            if($readcounts_by_position{"$chrom\t$position"} && $valid_variant == 1 && $is_indel == 0)
+             {
+                 my $readcounts = $readcounts_by_position{"$chrom\t$position"};
+                 my $ref_result = read_counts_by_allele($readcounts, $ref);
+@@ -263,7 +340,10 @@
+                             else {
+                                 $stats{'num_pass_filter'}++;
+                                 ## Print output, and append strandedness information ##
+-                                print PASS "$line\n";
++                                ##make sure the resulting variant has the filter info set to PAS
++                                my @split_line = split(/\t/, $line);
++                                $split_line[6] = "PASS";
++                                print PASS  join("\t", @split_line)."\n";
+                                 print "$line\tPASS\n" if($verbose);
+                             }
+ 
+@@ -275,6 +355,18 @@
+                     print FAIL "$line\tno_readcounts\n";
+                 }
+             }
++            elsif ($valid_variant == 1 && $is_indel == 1){
++                $stats{'num_pass_indel'}++;
++                ##make sure the resulting variant has the filter info set to PAS
++                my @split_line = split(/\t/, $line);
++                $split_line[6] = "PASS";
++                print PASS  join("\t", @split_line)."\n";
++                print "$line\tPASS\n" if($verbose);
++            }
++            elsif ($valid_variant == 0){
++                $stats{'not_passed_filter'}++;
++                print FAIL "$line\tno_pass_filter\n";
++            }
+             else
+             {
+                 $stats{'num_no_readcounts'}++;
+@@ -292,7 +384,11 @@
+     ## Print filtering stats ##
+ 
+     print $stats{'num_variants'} . " variants\n";
++    
++    print $stats{'not_passed_filter'}. " were not high quality\n";#from DWB
++    
+     print $stats{'num_no_readcounts'} . " failed to get readcounts for variant allele\n";
++    
+     print $stats{'num_fail_pos'} . " had read position < $min_read_pos\n";
+     print $stats{'num_fail_strand'} . " had strandedness < $min_strandedness\n";
+     print $stats{'num_fail_varcount'} . " had var_count < $min_var_count\n";
+@@ -304,7 +400,9 @@
+     print $stats{'num_fail_readlen'} . " had read length difference > $max_readlen_diff\n";
+     print $stats{'num_fail_dist3'} . " had var_distance_to_3' < $min_var_dist_3\n";
+ 
+-    print $stats{'num_pass_filter'} . " passed the strand filter\n";
++    print $stats{'num_pass_filter'} . " passed all the filters\n";
++    
++    print $stats{'num_pass_indel'} . " were included because they were indels\n";
+ 
+     return(0);
+ }
+@@ -373,6 +471,7 @@
+     for(my $colCounter = 5; $colCounter < $numContents; $colCounter++) {
+         my $this_allele = $lineContents[$colCounter];
+         my @alleleContents = split(/\:/, $this_allele);
++        
+         if($alleleContents[0] eq $allele) {
+             my $numAlleleContents = @alleleContents;
+ 
